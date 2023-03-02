@@ -97,7 +97,7 @@ def find_digits(image):
     img2 = thresh[:, thresh.shape[1]//3:thresh.shape[1]//3*2]
     img3 = thresh[:, thresh.shape[1]//3*2:]
     
-    print(find_digit(img1), find_digit(img2), find_digit(img3))
+    return (find_digit(img1), find_digit(img2), find_digit(img3))
 
 
 def find_digit(image):
