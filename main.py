@@ -13,5 +13,5 @@ recognize.init(POINTS, DIST_LIM)
 
 # ------------------------------------------ #
 
-image = cv2.imread("sample2.jpg")
+image = cv2.imread("image.jpg")
 recognize.find_digits(image)
