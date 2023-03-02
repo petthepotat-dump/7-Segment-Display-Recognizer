@@ -60,7 +60,7 @@ def get_mouse_position(event, x, y, flags, param):
         print(x, y)
 
 
-image = cv2.imread("assets/sample2.jpg")
+image = cv2.imread("sample2.jpg")
 # image = imutils.resize(image, height=720)
 # buf = image.copy()
 # ------------------ pre-process ------------------
@@ -81,6 +81,9 @@ output = four_point_transform(output, r)
 output = imutils.resize(output, height=720)
 
 # contours
+cnts = cv2.findContours(output.copy(), cv2.RETR_EXTERNAL,
+
+
 
 
 cv2.imshow('image', output)

@@ -1,12 +1,10 @@
 import cv2
-import time
-
-from scripts import recognize
-import cv2
-import numpy as np
 import imutils
 from imutils import contours
 from imutils.perspective import four_point_transform
+
+import numpy as np
+
 
 # ------------------ data ------------------
 DIGITS_LOOKUP = {
@@ -22,43 +20,69 @@ DIGITS_LOOKUP = {
     (1, 1, 1, 1, 0, 1, 1): 9
 }
 
+# black background
+NUM_RANGE = [
+    [(0, 0, 0), (180, 255, 10)],
+]
 
+POINTS = [
+
+    [0.7305785123966942, 0.4606323620582765],
+    [0.7759537190082644, 0.4606323620582765],
+    [0.7760330578512397, 0.47489150650960943],
+    [0.7322314049586777, 0.47489150650960943],
+
+
+]
 # --------------------------------- #
 
-frame = cv2.imread("image.jpg")
 
-# pre-process the image by resizing it, converting it to
-# graycale, blurring it, and computing an edge map
-image = imutils.resize(frame, height=500)
-gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-edged = cv2.Canny(blurred, 50, 200, 255)
+def get_abs_screen_coords(screen_size, rel_points):
+    p = [
+        int(rel_points[0][0]*screen_size[1]
+            ), int(rel_points[0][1]*screen_size[0]),
+        int(rel_points[1][0]*screen_size[1]
+            ), int(rel_points[1][1]*screen_size[0]),
+        int(rel_points[2][0]*screen_size[1]
+            ), int(rel_points[2][1]*screen_size[0]),
+        int(rel_points[3][0]*screen_size[1]
+            ), int(rel_points[3][1]*screen_size[0])
+    ]
+    return np.ndarray(shape=(4, 2), dtype=np.int32, buffer=np.array(p))
 
-# find contours in the edge map, then sort them by their
-# size in descending order
-cnts = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL,
-                        cv2.CHAIN_APPROX_SIMPLE)
-cnts = imutils.grab_contours(cnts)
-cnts = sorted(cnts, key=cv2.contourArea, reverse=True)
-displayCnt = None
-# loop over the contours
-for c in cnts:
-    # approximate the contour
-    peri = cv2.arcLength(c, True)
-    approx = cv2.approxPolyDP(c, 0.02 * peri, True)
-    # if the contour has four vertices, then we have found
-    # the thermostat display
-    if len(approx) == 4:
-        displayCnt = approx
-        break
-# extract the thermostat display, apply a perspective transform
-# to it
-warped = four_point_transform(gray, displayCnt.reshape(4, 2))
-output = four_point_transform(image, displayCnt.reshape(4, 2))
 
+def get_mouse_position(event, x, y, flags, param):
+    if event == cv2.EVENT_LBUTTONDOWN:
+        print(x, y)
+
+
+image = cv2.imread("sample2.jpg")
+# image = imutils.resize(image, height=720)
+# buf = image.copy()
+# ------------------ pre-process ------------------
+# extract display
+# translate points from relative to abs image coords
+
+r = get_abs_screen_coords(image.shape, POINTS)
+output = four_point_transform(image, r)
+output = imutils.resize(output, height=720)
+
+# ------------------------------------
+# contours
 # threshold the warped image, then apply a series of morphological
 # operations to cleanup the thresholded image
-thresh = cv2.threshold(warped, 0, 255,
+gray = cv2.cvtColor(output, cv2.COLOR_BGR2GRAY)
+
+# cv2.imshow('image', gray)
+# img = cv2.resize(image, (0, 0), fx=0.4, fy=0.4)
+# cv2.imshow('image', img)
+# print(img.shape)
+# cv2.setMouseCallback('image', get_mouse_position)
+# cv2.waitKey(0)
+# exit()
+# ------------------ numbers  ------------------
+
+thresh = cv2.threshold(gray, 0, 255,
                        cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
 kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (1, 5))
 thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
@@ -66,9 +90,8 @@ thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
 # cv2.imshow('image', thresh)
 # cv2.waitKey(0)
 
-# coutour filetering -- to detect the digits
-# find contours in the thresholded image, then initialize the
-# digit contours lists
+
+# eat nums
 cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL,
                         cv2.CHAIN_APPROX_SIMPLE)
 cnts = imutils.grab_contours(cnts)
@@ -77,31 +100,39 @@ digitCnts = []
 for c in cnts:
     # compute the bounding box of the contour
     (x, y, w, h) = cv2.boundingRect(c)
-# if the contour is sufficiently large, it must be a digit
-    if w >= 15 and (h >= 30 and h <= 40):
+    # if the contour is sufficiently large, it must be a digit
+    if w >= 200 and (h >= 200 and h <= 290):
         digitCnts.append(c)
         # draw box around figit
         cv2.rectangle(output, (x, y), (x + w, y + h), (0, 255, 0), 1)
 
+cv2.imshow('image', thresh)
+cv2.waitKey(0)
 
-# ------------------ sorting contours ( from lef tot right )  ------------------
 
-
-# sort the contours from left-to-right, then initialize the
-# actual digits themselves
 digitCnts = contours.sort_contours(digitCnts, method="left-to-right")[0]
 
+
+cv2.imshow('image', output)
+cv2.setMouseCallback('image', get_mouse_position)
+cv2.waitKey(0)
+
+# =============
+# figure out a way to fix small error
 
 digits = []
 # loop over each of the digits
 for c in digitCnts:
     # extract the digit ROI
     (x, y, w, h) = cv2.boundingRect(c)
+
+    # cv2.rectangle(output, (x, y), (x + w, y + h), (0, 255, 0), 1)
+
     roi = thresh[y:y + h, x:x + w]
     # compute the width and height of each of the 7 segments
     # we are going to examine
     (roiH, roiW) = roi.shape
-    (dW, dH) = (int(roiW * 0.25), int(roiH * 0.15))
+    (dW, dH) = (int(roiW * 0.25), int(roiH * 0.2))
     dHC = int(roiH * 0.05)
     # define the set of 7 segments
     segments = [
@@ -127,34 +158,18 @@ for c in digitCnts:
         # 50% of the area, mark the segment as "on"
         if total / float(area) > 0.5:
             on[i] = 1
+
     # lookup the digit and draw it on the image
     digit = DIGITS_LOOKUP[tuple(on)]
+    print(digit)
+
     digits.append(digit)
     # draw a rectangle
     cv2.rectangle(output, (x, y), (x + w, y + h), (0, 255, 0), 1)
     cv2.putText(output, str(digit), (x - 10, y - 10),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 0), 2)
 
-cv2.imshow('wadawd', edged)
-cv2.imshow('adawd', thresh)
 print(digits)
+
+cv2.imshow('image', thresh)
 cv2.waitKey(0)
-
-exit()
-
-print(video)
-
-while video.isOpened():
-    ret, frame = video.read()
-    if not ret:
-        break
-        result = recognize.find_digits(frame)
-        digits = result[0]
-        output = result[1]
-
-        # display the digits
-        num = u"{}{}.{} \u00b0C".format(*digits)
-        print(num)
-        cv2.imshow("Output", output)
-        # cv2.waitKey(0)
-        time.sleep(1/60)
