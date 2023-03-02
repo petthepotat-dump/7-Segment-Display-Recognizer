@@ -1,2 +1,5 @@
 *.pyc
 __pycache__
+*.mov
+*.mp4
+assets
