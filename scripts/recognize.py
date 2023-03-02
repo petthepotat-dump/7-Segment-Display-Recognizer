@@ -1,14 +1,16 @@
 import cv2
-import numpy as np
 import imutils
 from imutils import contours
 from imutils.perspective import four_point_transform
+
+import numpy as np
+import math
 
 # ------------------ data ------------------
 DIGITS_LOOKUP = {
     (1, 1, 1, 0, 1, 1, 1): 0,
     (0, 0, 1, 0, 0, 1, 0): 1,
-    (1, 0, 1, 1, 1, 1, 0): 2,
+    (1, 0, 1, 1, 1, 0, 1): 2,
     (1, 0, 1, 1, 0, 1, 1): 3,
     (0, 1, 1, 1, 0, 1, 0): 4,
     (1, 1, 0, 1, 0, 1, 1): 5,
@@ -18,112 +20,169 @@ DIGITS_LOOKUP = {
     (1, 1, 1, 1, 0, 1, 1): 9
 }
 
+DIGITS_LOCATION = [
+    (0.5, 0.1), # top
+    (0.2, 0.3), # topleft
+    (0.8, 0.3), # topright
+    (0.5, 0.5), # middle
+    (0.2, 0.7), # bottomleft
+    (0.8, 0.7), # bottomright
+    (0.5, 0.9), # bottom
+]
 
-# ------------------ 1. Preprocessing ------------------
+DIST_LIM = 0.2
+POINTS = [
+    0.7358280423280423, 0.46106150793650796,
+    0.7755121693121693, 0.4615575396825397,
+    0.7753677248677249, 0.477390873015873,
+    0.734457671957672, 0.4776388888888889
+]
 
+def init(points, dist_limit):
+    global POINTS, DIST_LIM
+    POINTS = points
+    DIST_LIM = dist_limit
+
+# --------------------------------- #
+
+def get_abs_screen_coords(screen_size, rel_points):
+    p = [
+        int(rel_points[0]*screen_size[1]), 
+        int(rel_points[1]*screen_size[0]),
+        int(rel_points[2]*screen_size[1]), 
+        int(rel_points[3]*screen_size[0]),
+        int(rel_points[4]*screen_size[1]), 
+        int(rel_points[5]*screen_size[0]),
+        int(rel_points[6]*screen_size[1]), 
+        int(rel_points[7]*screen_size[0])
+    ]
+    return np.array(p)
 
 def find_digits(image):
-    # pre-process the image by resizing it, converting it to
-    # graycale, blurring it, and computing an edge map
-    image = imutils.resize(image, height=500)
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    edged = cv2.Canny(blurred, 50, 200, 255)
-
-    # find contours in the edge map, then sort them by their
-    # size in descending order
-    cnts = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL,
-                            cv2.CHAIN_APPROX_SIMPLE)
-    cnts = imutils.grab_contours(cnts)
-    cnts = sorted(cnts, key=cv2.contourArea, reverse=True)
-    displayCnt = None
-    # loop over the contours
-    for c in cnts:
-        # approximate the contour
-        peri = cv2.arcLength(c, True)
-        approx = cv2.approxPolyDP(c, 0.02 * peri, True)
-        # if the contour has four vertices, then we have found
-        # the thermostat display
-        if len(approx) == 4:
-            displayCnt = approx
-            break
-    # extract the thermostat display, apply a perspective transform
-    # to it
-    warped = four_point_transform(gray, displayCnt.reshape(4, 2))
-    output = four_point_transform(image, displayCnt.reshape(4, 2))
-
-    # threshold the warped image, then apply a series of morphological
-    # operations to cleanup the thresholded image
-    thresh = cv2.threshold(warped, 0, 255,
-                           cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (1, 5))
+    # ------------------ pre-process ------------------
+    # extract display
+    # translate points from relative to abs image coords
+    r = get_abs_screen_coords(image.shape, POINTS).reshape((4, 2))
+    output = four_point_transform(image, r)
+    output = imutils.resize(output, height=500)
+    # grayscale
+    gray = cv2.cvtColor(output, cv2.COLOR_BGR2GRAY)
+    gray = cv2.GaussianBlur(gray, (5, 5), 0)
+    # threshold
+    thresh = cv2.threshold(gray, 60, 255, cv2.THRESH_BINARY_INV)[1]
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (4, 5))
     thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
-
-    # cv2.imshow('image', thresh)
-    # cv2.waitKey(0)
-
-    # coutour filetering -- to detect the digits
-    # find contours in the thresholded image, then initialize the
-    # digit contours lists
-    cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL,
-                            cv2.CHAIN_APPROX_SIMPLE)
+    # contours
+    cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     cnts = imutils.grab_contours(cnts)
     digitCnts = []
+    contour = cv2.Canny(thresh, 100, 200)
     # loop over the digit area candidates
     for c in cnts:
         # compute the bounding box of the contour
         (x, y, w, h) = cv2.boundingRect(c)
-    # if the contour is sufficiently large, it must be a digit
-        if w >= 15 and (h >= 30 and h <= 40):
+        # if the contour is sufficiently large, it must be a digit
+        if w >= 40 and (h >= 40 and h <= 200):
             digitCnts.append(c)
-            # draw box around figit
+            # draw rect around digit
             cv2.rectangle(output, (x, y), (x + w, y + h), (0, 255, 0), 1)
-
-    # sort the contours from left-to-right, then initialize the
-    # actual digits themselves
+    # sort left ot right
     digitCnts = contours.sort_contours(digitCnts,
-                                       method="left-to-right")[0]
-    digits = []
-    # loop over each of the digits
-    for c in digitCnts:
-        # extract the digit ROI
+                                        method="left-to-right")[0]
+
+    # TODO -- IMPORATN
+    # split into 3 sections for 3 digits
+    displays = []
+    img1 = thresh[:, :thresh.shape[1]//3]
+    img2 = thresh[:, thresh.shape[1]//3:thresh.shape[1]//3*2]
+    img3 = thresh[:, thresh.shape[1]//3*2:]
+    
+    print(find_digit(img1), find_digit(img2), find_digit(img3))
+
+def find_digit(image):
+    """Find the digit in the image"""
+    cnts = cv2.findContours(image.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cnts = imutils.grab_contours(cnts)
+    digitCnts = []
+    # loop over digit area candidates
+    for c in cnts:
+        # compute the bounding box of the contour
         (x, y, w, h) = cv2.boundingRect(c)
-        roi = thresh[y:y + h, x:x + w]
-        # compute the width and height of each of the 7 segments
-        # we are going to examine
-        (roiH, roiW) = roi.shape
-        (dW, dH) = (int(roiW * 0.25), int(roiH * 0.15))
-        dHC = int(roiH * 0.05)
-        # define the set of 7 segments
-        segments = [
-            ((0, 0), (w, dH)),  # top
-            ((0, 0), (dW, h // 2)),  # top-left
-            ((w - dW, 0), (w, h // 2)),  # top-right
-            ((0, (h // 2) - dHC), (w, (h // 2) + dHC)),  # center
-            ((0, h // 2), (dW, h)),  # bottom-left
-            ((w - dW, h // 2), (w, h)),  # bottom-right
-            ((0, h - dH), (w, h))  # bottom
-        ]
-        on = [0] * len(segments)
+        # if the contour is sufficiently large, it must be a digit
+        if w >= 40 and (h >= 40 and h <= 200):
+            digitCnts.append(c)
 
-        # loop over the segments
-        for (i, ((xA, yA), (xB, yB))) in enumerate(segments):
-            # extract the segment ROI, count the total number of
-            # thresholded pixels in the segment, and then compute
-            # the area of the segment
-            segROI = roi[yA:yB, xA:xB]
-            total = cv2.countNonZero(segROI)
-            area = (xB - xA) * (yB - yA)
-            # if the total number of non-zero pixels is greater than
-            # 50% of the area, mark the segment as "on"
-            if total / float(area) > 0.5:
-                on[i] = 1
-        # lookup the digit and draw it on the image
-        digit = DIGITS_LOOKUP[tuple(on)]
-        digits.append(digit)
-        # draw a rectangle
-        cv2.rectangle(output, (x, y), (x + w, y + h), (0, 255, 0), 1)
-        cv2.putText(output, str(digit), (x - 10, y - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 0), 2)
+    # sort contours
+    digitCnts = contours.sort_contours(digitCnts,
+                                        method="left-to-right")[0]
+    # find bounding rect of segmnets
+    brect = [1e9, 1e9, 0, 0]
+    # draw contours onto image
+    image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    legalConts = []
+    for c in digitCnts:
+        if cv2.contourArea(c) < 100:
+            continue
+        cv2.drawContours(image, [c], -1, (0, 255, 0), 1)
+        (x, y, w, h) = cv2.boundingRect(c)
+        brect[0] = min(brect[0], x)
+        brect[1] = min(brect[1], y)
+        brect[2] = max(brect[2], x+w)
+        brect[3] = max(brect[3], y+h)
+        legalConts.append(c)
+    # remap texture again
+    image = image[brect[1]:brect[1]+brect[3], brect[0]:brect[0]+brect[2]]
+    # check if digit is actually found
+    if brect[0] == 1e9 or brect[1] == 1e9 or brect[2] == 0 or brect[3] == 0:
+        return None
 
-    return
+    # print(brect[0], brect[1], brect[2]-brect[0], brect[3]-brect[1])
+    # shift rectanlge
+    brect[2] -= brect[0]
+    brect[3] -= brect[1]
+    brect[0] = 0
+    brect[1] = 0
+
+    # check if 1 (cuz diff)
+    if brect[2] < 80: return 1
+
+    cv2.rectangle(image, (brect[0], brect[1]), (brect[0]+brect[2], brect[1]+brect[3]), (0, 0, 255), 1)
+    # loop through each existing contour ==> figure outthere relative location.,
+    # check if near center
+    def find_distance(first, second):
+        return math.sqrt((first[0] - second[0])**2 + (first[1] - second[1])**2)
+    def find_rel(point, dimensions):
+        return (point[0]/dimensions[0], point[1]/dimensions[1])
+    # loop through segments
+    active_segments = []
+    for con in legalConts:
+        # find center locatino
+        M = cv2.moments(con)
+        cx = int(M['m10']/M['m00'])
+        cy = int(M['m01']/M['m00'])
+        center = (cx/image.shape[1], cy/image.shape[0])
+        # print(center)
+        # find distance from position
+        distance = find_distance(center, (brect[2]//2, brect[3]//2))
+        closest_point = (-1, 1e9)
+        for i, seg in enumerate(DIGITS_LOCATION):
+            # find distance from center
+            dist = find_distance(center, seg)
+            if dist < DIST_LIM:
+                closest_point = (i, dist)
+
+        # print(closest_point)
+        active_segments.append(closest_point[0])
+    # generate the array
+    on =     [0] * 7
+    for i in active_segments:
+        on[i] = 1
+    
+    # print(on)
+    # cv2.imshow('img1', image)
+    # cv2.waitKey(0)
+    return DIGITS_LOOKUP[tuple(on)]
+
+
+
+
