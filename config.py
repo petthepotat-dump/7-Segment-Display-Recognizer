@@ -73,6 +73,6 @@ while True:
     if cv2.waitKey(1) & 0xFF == ord("s"):
         data["points"] = pts
         data["dist_lim"] = DIST_LIM
-        json.dump(data, open("config.json", "w"))
+        json.dump(data, open("config.json", "w"), indent=3)
         print("saved")
 

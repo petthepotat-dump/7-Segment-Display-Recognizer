@@ -76,7 +76,6 @@ def find_digits(image):
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (5, 5), 0)
 
-
     # checkpoint 1
     # cv2.imshow("gray", imutils.resize(gray, height=500))
     # cv2.waitKey(0)
@@ -146,8 +145,8 @@ def find_digit(image):
         y = int(DIGITS_LOCATION[i][1] * img3.shape[0])
         cv2.circle(img3, (x, y), 1, (255, 255, 255), -1)
 
-    # cv2.imshow("image", imutils.resize(img3, height=500))
-    # cv2.waitKey(0)
+    cv2.imshow("image", imutils.resize(img3, height=500))
+    cv2.waitKey(0)
 
     # check if colored in certain radius around points
     blocks = [0] * 7

@@ -14,9 +14,9 @@ recognize.init(POINTS, DIST_LIM)
 
 # ------------------------------------------ #
 
-# image = cv2.imread("first_frame.jpg")
-# print(recognize.find_digits(image))
-# exit()
+image = cv2.imread("first_frame.jpg")
+print(recognize.find_digits(image))
+exit()
 
 # ------------------------------------------ #
 # video loading
@@ -26,9 +26,9 @@ video_path = "assets/sample.mp4"
 cap = cv2.VideoCapture(video_path)
 
 # save first frame to file
-ret, frame = cap.read()
-cv2.imwrite("first_frame.jpg", frame)
-exit()
+# ret, frame = cap.read()
+# cv2.imwrite("first_frame.jpg", frame)
+# exit()
 data = []
 
 def get_value(nums):
