@@ -64,19 +64,37 @@ def find_digits(image):
     # translate points from relative to abs image coords
     r = get_abs_screen_coords(image.shape, POINTS).reshape((4, 2))
     output = four_point_transform(image, r)
-    output = imutils.resize(output, height=500)
+    # output = imutils.resize(output, height=500)
+    # make darker blobs darker
+    hsv = cv2.cvtColor(output, cv2.COLOR_BGR2HSV)
+    for i in range(hsv.shape[0]):
+        for j in range(hsv.shape[1]):
+            if hsv[i, j, 2] < 72:
+                hsv[i, j, 2] *= 0
     # grayscale
-    gray = cv2.cvtColor(output, cv2.COLOR_BGR2GRAY)
+    bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (5, 5), 0)
+
+
+    # checkpoint 1
+    # cv2.imshow("gray", imutils.resize(gray, height=500))
+    # cv2.waitKey(0)
+
     # threshold
-    thresh = cv2.threshold(gray, 60, 255, cv2.THRESH_BINARY_INV)[1]
+    thresh = cv2.threshold(gray, 77, 255, cv2.THRESH_BINARY_INV)[1]
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (4, 5))
     thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+
+    # checkpoint 2
+    # cv2.imshow("thres", imutils.resize(thresh, height=500))
+    # cv2.waitKey(0)
+
     # contours
     cnts = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     cnts = imutils.grab_contours(cnts)
     digitCnts = []
-    contour = cv2.Canny(thresh, 100, 200)
+    contour = cv2.Canny(thresh, 20, 200)
     # loop over the digit area candidates
     for c in cnts:
         # compute the bounding box of the contour
@@ -86,22 +104,69 @@ def find_digits(image):
             digitCnts.append(c)
             # draw rect around digit
             cv2.rectangle(output, (x, y), (x + w, y + h), (0, 255, 0), 1)
-    # sort left ot right
-    digitCnts = contours.sort_contours(digitCnts,
-                                        method="left-to-right")[0]
+    
+    # checkpoitn 3
+    # cv2.imshow("output", imutils.resize(output, height=500))
+    # cv2.waitKey(0)
 
     # TODO -- IMPORATN
     # split into 3 sections for 3 digits
     displays = []
-    img1 = thresh[:, :thresh.shape[1]//3]
-    img2 = thresh[:, thresh.shape[1]//3:thresh.shape[1]//3*2]
-    img3 = thresh[:, thresh.shape[1]//3*2:]
-    
-    return (find_digit(img1), find_digit(img2), find_digit(img3))
+    img0 = thresh[:, :thresh.shape[1]//4]
+    img1 = thresh[:, thresh.shape[1]//4:thresh.shape[1]//4*2]
+    img2 = thresh[:, thresh.shape[1]//2:thresh.shape[1]//4*3]
+    img3 = thresh[:, thresh.shape[1]//4*3:]
+
+    a = 0
+    b = 0
+    c = 0
+    d = 0
+    try:
+        a = find_digit(img0)
+    except: pass
+    try:
+        b = find_digit(img1)
+    except: pass
+    try:
+        c = find_digit(img2)
+    except: pass
+    try:
+        d = find_digit(img3)
+    except: pass
+    return [a, b, c, d]
+
 
 
 def find_digit(image):
     """Find the digit in the image"""
+    # display image
+    img3 = image.copy()
+    for i in range(len(DIGITS_LOCATION)):
+        x = int(DIGITS_LOCATION[i][0] * img3.shape[1])
+        y = int(DIGITS_LOCATION[i][1] * img3.shape[0])
+        cv2.circle(img3, (x, y), 1, (255, 255, 255), -1)
+
+    # cv2.imshow("image", imutils.resize(img3, height=500))
+    # cv2.waitKey(0)
+
+    # check if colored in certain radius around points
+    blocks = [0] * 7
+    for i, p in enumerate(DIGITS_LOCATION):
+        x = int(p[0] * image.shape[1])
+        y = int(p[1] * image.shape[0])
+        # check if pixel is white
+        if image[y, x] == 255:
+            blocks[i] = 1
+
+    # print(blocks)
+    return DIGITS_LOOKUP[tuple(blocks)]
+
+
+
+
+
+
+
     cnts = cv2.findContours(image.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     cnts = imutils.grab_contours(cnts)
     digitCnts = []
@@ -113,9 +178,9 @@ def find_digit(image):
         if w >= 40 and (h >= 40 and h <= 200):
             digitCnts.append(c)
 
+    # TODO - fix empty arr
+
     # sort contours
-    digitCnts = contours.sort_contours(digitCnts,
-                                        method="left-to-right")[0]
     # find bounding rect of segmnets
     brect = [1e9, 1e9, 0, 0]
     # draw contours onto image
@@ -162,9 +227,15 @@ def find_digit(image):
         cx = (rect[0] + rect[0] + rect[2])//2
         cy = (rect[1] + rect[1] + rect[3])//2
         center = ((cx-shift[0])/remap.shape[1], (cy-shift[1])/remap.shape[0])
+        
+        # check if contour overalops with rectangle
+        
+
         # find distance from position
         distance = find_distance(center, (brect[2]//2, brect[3]//2))
         closest_point = (-1, 1e9)
+        
+        
         for i, seg in enumerate(DIGITS_LOCATION):
             # find distance from center
             dist = find_distance(center, seg)

@@ -14,7 +14,7 @@ DIST_LIM = data["dist_lim"]
 
 # now to take in sample image
 # and select the points
-path = "image.jpg"
+path = "first_frame.jpg"
 # imput_image = input("Enter the path to the image: ")
 imput_image = path
 buf = cv2.imread(imput_image)
