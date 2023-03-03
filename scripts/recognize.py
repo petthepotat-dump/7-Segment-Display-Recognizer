@@ -44,6 +44,7 @@ def init(points, dist_limit):
     DIST_LIM = dist_limit
 
 # --------------------------------- #
+# digit recognition
 
 def get_abs_screen_coords(screen_size, rel_points):
     p = [
@@ -133,8 +134,6 @@ def find_digits(image):
         d = find_digit(img3)
     except: pass
     return [a, b, c, d]
-
-
 
 def find_digit(image):
     """Find the digit in the image"""
@@ -265,7 +264,5 @@ def find_digit(image):
     cv2.imshow('img1', mask)
     cv2.waitKey(0)
     return DIGITS_LOOKUP[tuple(on)]
-
-
 
 

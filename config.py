@@ -67,8 +67,7 @@ while True:
         image = imutils.resize(buf, height=height)
         change = True
         print('zoom')
-
-
+    
     # save
     if cv2.waitKey(1) & 0xFF == ord("s"):
         data["points"] = pts
