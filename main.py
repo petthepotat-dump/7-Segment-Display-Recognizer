@@ -1,57 +1,80 @@
-import cv2 
-import numpy as np
-from source import getPerspectiveTransform
-import imutils
+from scripts import recognize
+import cv2
+import json
 
-# define the dictionary of digit segments so we can identify
-# each digit on the thermostat
-DIGITS_LOOKUP = {
-	(1, 1, 1, 0, 1, 1, 1): 0,
-	(0, 0, 1, 0, 0, 1, 0): 1,
-	(1, 0, 1, 1, 1, 1, 0): 2,
-	(1, 0, 1, 1, 0, 1, 1): 3,
-	(0, 1, 1, 1, 0, 1, 0): 4,
-	(1, 1, 0, 1, 0, 1, 1): 5,
-	(1, 1, 0, 1, 1, 1, 1): 6,
-	(1, 0, 1, 0, 0, 1, 0): 7,
-	(1, 1, 1, 1, 1, 1, 1): 8,
-	(1, 1, 1, 1, 0, 1, 1): 9
-}
+data = json.load(open("config.json", "r"))
+
+POINTS = data["points"]
+DIST_LIM = data["dist_lim"]
+CHANGE_DIF = 5
+
+# ------------------ data ------------------ #
+
+recognize.init(POINTS, DIST_LIM)
+
+# ------------------------------------------ #
+
+image = cv2.imread("first_frame.jpg")
+print(recognize.find_digits(image))
+exit()
+
+# ------------------------------------------ #
+# video loading
+# ------------------------------------------ #
+# video_path = input("input video path: ")
+video_path = "assets/sample.mp4"
+cap = cv2.VideoCapture(video_path)
+
+# save first frame to file
+# ret, frame = cap.read()
+# cv2.imwrite("first_frame.jpg", frame)
+# exit()
+data = []
+
+def get_value(nums):
+	return nums[0] * 100 + nums[1] * 10 + nums[2] + nums[3]/10
+
+ret, frame = cap.read()
+nums = recognize.find_digits(frame)
+data.append((get_value(nums), nums[0], nums[1], nums[2], nums[3]))
+print(get_value(nums))
 
 
-image = cv2.imread('image.jpg')
-
-# pre-process the image by resizing it, converting it to
-# graycale, blurring it, and computing an edge map
-image = imutils.resize(image, height=500)
-gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-edged = cv2.Canny(blurred, 50, 200, 255)
-
-cv2.imshow('image', edged)
-cv2.waitKey(0)
-
-
-# find contours in the edge map, then sort them by their
-# size in descending order
-cnts = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL,
-	cv2.CHAIN_APPROX_SIMPLE)
-cnts = imutils.grab_contours(cnts)
-cnts = sorted(cnts, key=cv2.contourArea, reverse=True)
-displayCnt = None
-# loop over the contours
-for c in cnts:
-	# approximate the contour
-	peri = cv2.arcLength(c, True)
-	approx = cv2.approxPolyDP(c, 0.02 * peri, True)
-	# if the contour has four vertices, then we have found
-	# the thermostat display
-	if len(approx) == 4:
-		displayCnt = approx
+while True:
+	ret, frame = cap.read()
+	if not ret:
 		break
-# extract the thermostat display, apply a perspective transform
-# to it
-warped = four_point_transform(gray, displayCnt.reshape(4, 2))
-output = four_point_transform(image, displayCnt.reshape(4, 2))
+	nums = recognize.find_digits(frame)
+	if nums[0] == -1:
+		nums[0] = data[-1][1]
+	if nums[1] == -1:
+		nums[1] = data[-1][2]
+	if nums[2] == -1:
+		nums[2] = data[-1][3]
+	if nums[3] == -1:
+		nums[3] = data[-1][4]
+	# insert formatting code
+	# check with previous problem
+	vv = get_value(nums)
+	value = vv
+	# check if value is off by too much lmao just in case
+	if abs(data[-1][0] - vv) > CHANGE_DIF:
+		value = data[-1][0] * 0.99 + nums[0] * 0.01
 
-cv2.imshow('image', output)
+	print(vv, value, abs(data[-1][0] - vv))
+	vv = value
+	# --
+	# TODO - change this
+	data.append((value, nums[0], nums[1], nums[2], nums[3]))
+
+	cv2.imshow("frame", frame)
+	if cv2.waitKey(1) == ord("q"):
+		break
+
+cap.release()
+cv2.destroyAllWindows()
+# save data to file
+result_path = input("where save file?: ")
+with open(result_path, "w") as f:
+	f.write("\n".join([f"{val[0]:.1f}" for val in data]))
+
